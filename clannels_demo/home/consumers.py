@@ -1,25 +1,54 @@
-from channels.generic.websocket import WebsocketConsumer
-from asgiref.sync import async_to_sync
 import json
-
-class TestConsumer(WebsocketConsumer):
-    def connect(self):
-        self.room_name = "test_consumer"
-        self.room_group_name = "test_consumer_group"
-        async_to_sync(self.channel_layer.group_add)(
-            self.room_name, self.room_group_name
-        )
-        self.accept()
-        self.send(text_data=json.dumps({'status': 'connected from django'}))
+from channels.generic.websocket import AsyncWebsocketConsumer
 
 
-    def receive(self, text_data):
-        print(text_data)
-        self.send(text_data=json.dumps(text_data))
-        
+class DemoTransactionConsumer(AsyncWebsocketConsumer):
+    async def connect(self):
+        self.room_name = self.scope['url_route']['kwargs']['id']
+        self.room_group_name = 'demo_transaction_' + self.room_name
 
-    def disconnect(self, *args, **kwargs):
-        print('disconnect')
+        # Join room group
+        await self.channel_layer.group_add(self.room_group_name,self.channel_name)
+        await self.accept()
 
+        await self.send(text_data=json.dumps(
+            {
+                'success': True,
+                'message': 'Connected to ' + self.room_group_name + ' group',
+            }))
+
+    async def disconnect(self, close_code):
+        # Leave room group
+        await self.channel_layer.group_discard(self.room_group_name,self.channel_name)
+
+    # Receive message from WebSocket
+    async def receive(self, text_data):
+        text_data_json = json.loads(text_data)
+        data = text_data_json['data']
+
+        print('data received: ' + json.dumps(data))
+
+        # self.target_room_group_name = 'demo_transaction_' + self.room_name
+
+        # await self.channel_layer.group_send(self.target_room_group_name, {
+        #     'type': 'send_demo_transaction_data',
+        #     'data': data,
+        # })
+
+    # or 
+        await self.channel_layer.group_send(self.room_group_name, 
+        {
+            'type': 'send_demo_transaction_data',
+            'data': data,
+        })
+
+    # Receive message from room group
+    async def send_demo_transaction_data(self, event):
+        data = event['data']
+
+        # Send message to WebSocket
+        await self.send(text_data=json.dumps({
+            'data': data,
+        }))
 
 
